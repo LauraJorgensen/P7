@@ -1,22 +1,13 @@
 # Function for calculating the generalised KL-divergence
 gkl.dev <- function(x, y){
-  if(length(x) != length(y)){
-    stop("The input has different lengths.")
-  }
-  if(any(x < 0 | y < 0)){
-    stop("The input is negative.")
-  }
   r <- y 
   p <- which(x > 0)   # 0 log(0) = 0
   r[p] <- (x * (log(x) - log(y)) - x + y)[p]   
   return(sum(r))
 }
 
-# KL-NMF algorithm as described in Section 2.3
+# KL-NMF algorithm as described in Section 3.2 and Section 3.4
 KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
-  if(any(V < 0) || k < 0){
-    stop("The input is negative.")
-  }
   
   m <- dim(V)[1]  
   n <- dim(V)[2]  
@@ -25,7 +16,7 @@ KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
   div <- rep(0, length(seed)) 
   Wlist <- list()
   Hlist <- list()
-  reslist <- list() 
+  reslist <- list() # for each initialization, we store both the number of iterations and the KL-divergence for each iteration. 
   
   for(i in 1:length(seed)){
     set.seed(seed[i])
@@ -36,7 +27,7 @@ KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
     
     ones <- matrix(1, nrow = m, ncol = n) 
     
-    obj <- rep(NA_real_, maxiter)
+    obj <- rep(0, maxiter) # to store 
     niter <- maxiter
     
     for(t in 1:maxiter){
@@ -90,56 +81,3 @@ KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
   
   return(Output)
 }
-
-
-# Min-Vol KL-NMF algorithm as described in Section 2.4...
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Eksempel 1
-
-A = matrix(c(1, 1, 0,
-             2, 2, 0,
-             0, 1, 2,
-             0, 2, 3),
-           nrow = 4, ncol = 3)
-
-A = matrix(c(1, 1, 0,
-             2, 2, 0,
-             0, 1, 2,
-             0, 2, 3),
-           nrow = 4, ncol = 3, byrow = TRUE)
-
-fit2 <- KLNMF(A, k = 2, seed = 1:10, tol = 1e-8, maxiter = 1000)
-fit2$iter
-
-fit2$W %*% fit2$H
-
-# Eksempel 2
-
-V = matrix(c(20, 3, 24, 19,  2, 15,
-             9, 14, 25, 30, 15, 10,
-             30, 6, 12, 10, 11,  7,
-             9, 27, 5, 11, 19, 15),
-           nrow = 4, ncol = 6)
-
-fit <- KLNMF(V, k = 5, seed = 1:10, tol = 1e-8)
-
-t0 <- system.time(fit <- KLNMF(V, k = 5, seed = 1:10, tol = 1e-8))
-t0["elapsed"]
-
-fit$W
-fit$H
-
-plot(fit$objfn,  type = "l", xlab = "Iteration", ylab = "KL-divergence")
-fit$gkl
