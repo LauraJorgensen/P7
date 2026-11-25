@@ -6,11 +6,14 @@ gkl.dev <- function(x, y){
   return(sum(r))
 }
 
+# Numerically stable log-determinant
+logdet <- function(A) as.numeric(determinant(A, logarithm = TRUE)$modulus)
+
 # Function for calculating the regularized generalised KL-divergence
 gkl.dev.reg <- function(V, W, H, lambda, k, delta = 1){
   div <- gkl.dev(as.vector(V), as.vector(W %*% H))
-  X <- t(W) %*% W + delta * diag(nrow = k) 
-  return(div + lambda * log(det(X)))
+  X <- t(W) %*% W + delta * diag(nrow = k)
+  return(div + lambda * logdet(X))
 }
 
 # Function for normalizing W and H
@@ -98,12 +101,14 @@ KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
 
 
 # Min-Vol KL-NMF algorithm as described in Section 3.3 and Section 3.4
-MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000, lambda = 1){
+MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000, lambda_tilde = 0.01){
   m <- dim(V)[1]
   n <- dim(V)[2]
   eps <- 1e-10   # to avoid underflow
   
+  lambdas <- rep(0, length(seed))
   div <- rep(0, length(seed)) 
+  objval <- rep(0, length(seed)) 
   Wlist <- list()
   Hlist <- list()
   reslist <- list() 
@@ -111,9 +116,15 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
   for(i in 1:length(seed)){
     set.seed(seed[i])
     gamma <- 1
+    
     # Initialize W and H
     W <- matrix(stats::runif(m*k), nrow = m, ncol = k)  
     H <- matrix(stats::runif(k*n), nrow = k, ncol = n)  
+    
+    WH0 <- W %*% H
+    WH0[WH0 <= 0] <- eps
+    lambda <- lambda_tilde * gkl.dev(as.vector(V), as.vector(WH0)) / max(abs(logdet(t(W) %*% W + diag(nrow = k))), eps)
+    lambdas[i] <- lambda
     
     nm <- normalize(W, H)
     W <- nm$W
@@ -176,10 +187,11 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
     Wlist[[i]] <- W
     Hlist[[i]] <- H
     div[i] <- gkl.dev(as.vector(V), as.vector(W %*% H))
+    objval[i] <- gkl.dev.reg(V, W, H, lambda, k)
     reslist[[i]] <- list(iter = niter, objfn = obj[1:niter])
   }
   
-  best <- which.min(div)
+  best <- which.min(objval)
   W <- Wlist[[best]]
   H <- Hlist[[best]]
   
@@ -194,9 +206,31 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
   Output$W <- W
   Output$H <- H
   Output$gkl <- div[best]
+  Output$obj <- objval[best] 
   Output$iter <- reslist[[best]]$iter
   Output$objfn <- reslist[[best]]$objfn
+  Output$lambda <- lambdas[best]
+  Output$lambda_tilde <- lambda_tilde
   
   return(Output)
 }
 
+# Function for tuning lambda tilde
+tuning_lambda = function(V, k, seed = 42, grid = c(0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.2), rel_tol = 0.05, tol = 1e-5, maxiter = 1000){
+  grid <- sort(grid)
+  gkl <- rep(0, length(grid))
+  fit <- vector("list", length(grid))
+  
+  for(j in seq_along(grid)){
+    fit[[j]] <- MINVOLNMF(V, k, seed = seed, tol = tol, maxiter = maxiter, lambda_tilde = grid[j])
+    gkl[j] <- fit[[j]]$gkl
+  }
+  
+  ref <- gkl[1]
+  ok <- is.finite(gkl) & gkl <= (1 + rel_tol) * ref
+  best <- max(which(ok))
+  
+  list(lambda_tilde = grid[best],
+       fit = fit[[best]],
+       table = data.frame(lambda_tilde = grid, gkl = gkl, accepted = ok))
+}
