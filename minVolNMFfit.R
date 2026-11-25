@@ -65,13 +65,8 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
       Wnom <- t(t(Wup) * 1/colSums(Wup))
       
       # Line-search
-      ls_iter <- 0
-      max_ls <- 10
-      min_gamma <- 1e-12
-      
       while (gkl.dev.reg(V, Wnom, Hnom, lambda, k) > gkl.dev.reg(V, W, H, lambda, k) &&
-             ls_iter < max_ls &&
-             gamma > min_gamma) {
+             gamma > eps) {
         gamma <- gamma * 0.8
         Wnom <- (1 - gamma) * W + gamma * Wup
         Hnom <- colSums(Wnom) * H
