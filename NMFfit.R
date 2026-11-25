@@ -22,6 +22,43 @@ normalize <- function(W, H){
   list(W = t(t(W) / s), H = s * H)
 }
 
+# Function to calculate BIC
+gkl.bic <- function(k, V, W, H){
+  V <- as.matrix(V)
+  m <- dim(V)[1]
+  n <- dim(V)[2]
+  p <- m * k + k * n - k
+  t <- m * n
+  gkl <- gkl.dev(as.vector(V), as.vector(W %*% H))
+  model_complexity <- p * log(t)
+  return(model_complexity + 2*gkl)
+}
+
+# Testing different choices of k and finding BIC
+k.choice <- function(trials = 3:10, V){
+  Wlist <- list()
+  Hlist <- list()
+  biclist <- rep(NA_real_, length(trials))
+  for (j in seq_along(trials)){
+    k <- trials[j]
+    fit <- KLNMF(V, k = k, seed = 1:10, tol = 1e-8, maxiter = 1000)
+    Wlist[[j]] <- fit$W
+    Hlist[[j]] <- fit$H
+    biclist[j] <-gkl.bic(k, V, fit$W, fit$H)
+  }
+  best <- which.min(biclist)
+  W <- Wlist[[best]]
+  H <- Hlist[[best]]
+  
+  Output <- list()
+  Output$W <- W
+  Output$H <- H
+  Output$bic <- biclist[best]
+  Output$k <- trials[best]
+  Output$bicall <- setNames(biclist, trials)
+  return(Output)
+}
+
 # KL-NMF algorithm as described in Section 3.2 and Section 3.4
 KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
   
