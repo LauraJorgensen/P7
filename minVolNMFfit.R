@@ -19,7 +19,7 @@ gkl.dev.reg <- function(V, W, H, lambda, k, delta = 1){
 }
 
 # Min-Vol KL-NMF algorithm as described in Section 2.4...
-MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000, lambda = 1){
+MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000, lambda = 1e-2){
   m <- dim(V)[1]
   n <- dim(V)[2]
   eps <- 1e-10   # to avoid underflow
@@ -57,12 +57,14 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
       WH <- W %*% H
       WH[WH <= 0] <- eps
       
-      Wup <- W * (((ones %*% t(H) - 4 * lambda * (W %*% Y_minus))^2 + (8 * lambda * W %*% (Y_plus + Y_minus)) * ((V / (W %*% H)) %*% t(H)))^(1/2) - (ones %*% t(H) - 4 * lambda * W %*% Y_minus)) / (4 * lambda * W %*% (Y_plus + Y_minus) + eps)
+      Wup <- W * (((ones %*% t(H) - 4 * lambda * (W %*% Y_minus))^2 + (8 * lambda * W %*% (Y_plus + Y_minus)) * ((V / (WH)) %*% t(H)))^(1/2) - (ones %*% t(H) - 4 * lambda * W %*% Y_minus)) / (4 * lambda * W %*% (Y_plus + Y_minus) + eps)
       Wup[Wup <= 0] <- eps
       
       # Normalize
       Hnom <- colSums(Wup) * H
       Wnom <- t(t(Wup) * 1/colSums(Wup))
+      H <- colSums(W) * H
+      W <- t(t(W) / colSums(W))
       
       # Line-search
       while (gkl.dev.reg(V, Wnom, Hnom, lambda, k) > gkl.dev.reg(V, W, H, lambda, k) &&
@@ -71,7 +73,6 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
         Wnom <- (1 - gamma) * W + gamma * Wup
         Hnom <- colSums(Wnom) * H
         Wnom <- t(t(Wnom) * 1/colSums(Wnom))
-        ls_iter <- ls_iter + 1
       }
       W <- Wnom
       H <- Hnom
@@ -79,11 +80,10 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
       gamma <- min(1, gamma * 1.2)
       
       # Stopping Criterion
-      obj[t] <- gkl.dev(as.vector(V), as.vector(W %*% H))
-      if(t > 1 && is.finite(obj[t]) && abs(obj[t-1] - obj[t]) / (abs(obj[t-1]) + eps) < tol){
-        niter <- t
-        break
-      }
+      obj[t] <- gkl.dev.reg(V, W, H, lambda, k)
+      if(t > 1 && abs(obj[t-1] - obj[t]) / (abs(obj[t-1]) + eps) < 1e-9){
+        niter <- t; 
+        break}
     }
     
     # Normalization of W
