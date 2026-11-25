@@ -35,13 +35,13 @@ gkl.bic <- function(k, V, W, H){
 }
 
 # Testing different choices of k and finding BIC
-k.choice <- function(trials = 3:10, V){
+k.choice <- function(trials = 1:10, V, seed = 42, tol = 1e-8, maxiter = 1000){
   Wlist <- list()
   Hlist <- list()
   biclist <- rep(NA_real_, length(trials))
   for (j in seq_along(trials)){
     k <- trials[j]
-    fit <- KLNMF(V, k = k, seed = 1:10, tol = 1e-8, maxiter = 1000)
+    fit <- KLNMF(V, k = k, seed = seed, tol = tol, maxiter = maxiter)
     Wlist[[j]] <- fit$W
     Hlist[[j]] <- fit$H
     biclist[j] <-gkl.bic(k, V, fit$W, fit$H)
