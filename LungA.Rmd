@@ -18,7 +18,9 @@ library(tidyverse)
 library(Matrix)
 library(ggplot2)
 
-source("NMFfit.R")    
+fn_files <- list.files(path = file.path("Utils"), full.names = TRUE)
+invisible(lapply(fn_files, source))
+
 Rcpp::sourceCpp("SFS-master/src/sampleSFS.cpp")
 
 ```
@@ -55,6 +57,24 @@ V = as.matrix(LACA[, order(colSums(LACA))])
 # KL-NMF
 
 ## Model selection
+
+```{r, warning = F, fig.width = 5, fig.height = 3, fig.align = "center"}
+
+testk <- k.choice(trials = 5:15, seed = 1, V = V)
+
+# testk$bicall
+
+df <- data.frame(k = as.integer(names(testk$bicall)), bic = as.numeric(testk$bicall))
+
+ggplot(df, aes(x = k, y = bic)) +
+  geom_line(linewidth = 0.8, colour = "dodgerblue4") +
+  geom_point(size = 1.5) + geom_point(data = df[df$k == testk$k, ], size = 4, shape = 1, colour = "black") +
+  scale_x_continuous(breaks = df$k) +
+  labs(x = "Number of signatures", y = "Bayesian Information Criterion (BIC)")+
+  theme_bw() +
+  theme(panel.grid.minor = element_blank())
+
+```
 
 ## Fit
 
@@ -210,6 +230,8 @@ g2
 
 lambda_tilde <- tuning_lambda(V, k, seed = 1:2)
 
+# lambda_tilde$table
+
 ```
 
 
@@ -217,7 +239,7 @@ lambda_tilde <- tuning_lambda(V, k, seed = 1:2)
 
 ```{r}
 
-fit_min <- MINVOLNMF(V, k = k, seed = 1:10, tol = 1e-8, maxiter = 1000,  lambda_tilde = 0.05)
+fit_min <- MINVOLNMF(V, k = k, seed = 1:10, tol = 1e-8, maxiter = 1000,  lambda_tilde = 0.005)
 
 ```
 
