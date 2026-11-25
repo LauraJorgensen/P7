@@ -6,6 +6,11 @@ gkl.dev <- function(x, y){
   return(sum(r))
 }
 
+normalize <- function(W, H){
+  s <- colSums(W)
+  list(W = t(t(W) / s), H = s * H)
+}
+
 # KL-NMF algorithm as described in Section 3.2 and Section 3.4
 KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
   
@@ -52,8 +57,9 @@ KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
     }
     
     # Normalization of W
-    H <- colSums(W) * H
-    W <- t(t(W) * 1/colSums(W))
+    nm = normalize(W, H)
+    W <- nm$W
+    H <- nm$H
     
     Wlist[[i]] <- W
     Hlist[[i]] <- H
@@ -81,3 +87,19 @@ KLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000){
   
   return(Output)
 }
+
+
+# Min-Vol KL-NMF algorithm as described in Section 3.3 and Section 3.4
+
+
+
+
+
+
+
+
+
+
+
+
+
