@@ -18,7 +18,12 @@ gkl.dev.reg <- function(V, W, H, lambda, k, delta = 1){
   return(div + lambda * log(det(X)))
 }
 
-# Min-Vol KL-NMF algorithm as described in Section 2.4...
+normalize <- function(W, H){
+  s <- colSums(W)
+  list(W = t(t(W) / s), H = s * H)
+}
+
+# Min-Vol KL-NMF algorithm as described in Section 2.4.
 MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000, lambda = 1e-2){
   m <- dim(V)[1]
   n <- dim(V)[2]
@@ -35,6 +40,10 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
     # Initialize W and H
     W <- matrix(stats::runif(m*k), nrow = m, ncol = k)  
     H <- matrix(stats::runif(k*n), nrow = k, ncol = n)  
+    
+    nm <- normalize(W, H)
+    W <- nm$W
+    H <- nm$H
     
     ones <- matrix(1, nrow = m, ncol = n) 
     
@@ -61,18 +70,18 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
       Wup[Wup <= 0] <- eps
       
       # Normalize
-      Hnom <- colSums(Wup) * H
-      Wnom <- t(t(Wup) * 1/colSums(Wup))
-      H <- colSums(W) * H
-      W <- t(t(W) / colSums(W))
+      nm <- normalize(Wup, H)
+      Wnom <- nm$W
+      Hnom <- nm$H
       
       # Line-search
       while (gkl.dev.reg(V, Wnom, Hnom, lambda, k) > gkl.dev.reg(V, W, H, lambda, k) &&
              gamma > eps) {
         gamma <- gamma * 0.8
-        Wnom <- (1 - gamma) * W + gamma * Wup
-        Hnom <- colSums(Wnom) * H
-        Wnom <- t(t(Wnom) * 1/colSums(Wnom))
+        Wmix <- (1 - gamma) * W + gamma * Wup
+        nm <- normalize(Wmix, H)
+        Wnom <- nm$W
+        Hnom <- nm$H
       }
       W <- Wnom
       H <- Hnom
@@ -147,14 +156,11 @@ V = matrix(c(20, 3, 24, 19,  2, 15,
              9, 27, 5, 11, 19, 15),
            nrow = 4, ncol = 6)
 
-fit <- MINVOLNMF(V, k = 5, seed = 1:10, tol = 1e-8)
+fit <- MINVOLNMF(V, k = 4, seed = 1:10, tol = 1e-8)
 
 
-fit$W
-fit$H
+fit$W %*% fit$H
 
 plot(fit$objfn,  type = "l", xlab = "Iteration", ylab = "KL-divergence")
 fit$gkl
-
-round(fit$W %*% fit$H, 2)
 
