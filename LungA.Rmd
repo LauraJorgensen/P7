@@ -54,6 +54,20 @@ V = as.matrix(LACA[, order(colSums(LACA))])
 
 ```
 
+# Cosmic data
+
+```{r}
+
+COSMIC <- read_tsv("COSMIC_v3.2_SBS_GRCh37.tsv")
+
+COSMIC_matrix <- COSMIC %>%
+  column_to_rownames(var = colnames(COSMIC)[1])
+
+X <- as.matrix(COSMIC_matrix)
+
+```
+
+
 # KL-NMF
 
 ## Model selection
@@ -371,5 +385,111 @@ g2 = ggplot(dat2, aes(x = m, y = max)) +
 g2
 
 ```
+```{r}
+# 1. Vælg de COSMIC-signaturer du vil plotte
+valgte_sigs <- c("SBS3", "SBS40", "SBS39", "SBS4") # Ret til dine ønskede signaturer
+P_cosmic <- X[, valgte_sigs, drop = FALSE]
 
+# 2. Sikr at rækkefølgen på rækkerne matcher dine mutationstyper (16 af hver i rækkefølge)
+# Udtrækker f.eks. "C>A" fra "A[C>A]A" og laver mellemrum ("C > A") så det matcher din kode
+raw_sub <- gsub(".*\\[(.*)\\].*", "\\1", rownames(P_cosmic))
+formatted_sub <- gsub(">", " > ", raw_sub)
+
+# Sorter data så det følger rækkefølgen i names(sub_cols) (C > A, C > G, osv.)
+ord <- order(factor(formatted_sub, levels = names(sub_cols)), rownames(P_cosmic))
+P_cosmic <- P_cosmic[ord, , drop = FALSE]
+formatted_sub <- formatted_sub[ord]
+
+# 3. Klargør data til ggplot (bevarer de rigtige SBS-navne)
+data2 <- as.data.frame(P_cosmic) %>%
+  mutate(
+    m = factor(rownames(P_cosmic), levels = unique(rownames(P_cosmic))),
+    sub = factor(formatted_sub, levels = names(sub_cols))
+  ) %>%
+  pivot_longer(
+    cols = all_of(valgte_sigs),
+    names_to = "sig",
+    values_to = "max"
+  ) %>%
+  mutate(sig = factor(sig, levels = valgte_sigs))
+
+# 4. Hjælpe-dataframes til y-aksen, gitterlinjer, baggrund og labels
+ylim_df <- data2 %>%
+  group_by(sig) %>%
+  summarise(ymax = max(max, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    ytop  = ymax * 1.05,
+    label = as.character(sig) # Viser nu "SBS1", "SBS2" osv. i stedet for "Signature 1"
+  )
+
+grid_df <- ylim_df %>%
+  rowwise() %>%
+  mutate(yb = list({
+    rng <- c(-0.05 * ymax, 1.05 * ymax)
+    equal_breaks(n = 3, s = 0.2)(rng)
+  })) %>%
+  tidyr::unnest(yb) %>%
+  ungroup()
+
+panel_df <- expand.grid(
+  sub = factor(names(sub_cols), levels = names(sub_cols)),
+  sig = factor(valgte_sigs, levels = valgte_sigs)
+)
+
+label_df <- ylim_df %>%
+  mutate(
+    sub = factor("T > G", levels = names(sub_cols)),
+    m   = levels(data2$m)[length(levels(data2$m))]
+  )
+
+# 5. Plot
+g_cosmic <- ggplot(data2, aes(x = m, y = max)) +
+  geom_rect(data = panel_df, inherit.aes = FALSE,
+            aes(fill = sub),
+            xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
+  scale_fill_manual(values = bg_cols) +
+  geom_hline(data = grid_df, aes(yintercept = yb),
+             colour = "grey75", linewidth = 0.2) +
+  geom_bar(stat = "identity", width = 0.8, fill = "dodgerblue4") +
+  geom_text(data = label_df, inherit.aes = FALSE,
+            aes(x = m, y = ytop, label = label),
+            hjust = 1, vjust = 1.4, fontface = "bold", size = 3.2) +
+  facet_grid(rows = vars(sig), cols = vars(sub),
+             scales = "free", switch = "x") +
+  theme_bw() +
+  theme(text = element_text(size = 10),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 8),
+        axis.ticks = element_blank(),
+        legend.position = "none",
+        panel.grid = element_blank(),
+        panel.border = element_rect(colour = "grey75", fill = NA, linewidth = 0.2),
+        panel.spacing.x = unit(0, "line"),
+        panel.spacing.y = unit(0.4, "line"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank(),
+        strip.placement = "outside",
+        strip.text.x = element_text(size = 10, face = "bold")) +
+  ylab("Probability") + xlab("Mutation types") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     breaks = equal_breaks(n = 3, s = 0.2),
+                     expand = c(0.05, 0))
+
+g_cosmic
+```
+
+
+
+# Match with signatures from COSMIS
+```{r}
+
+W <- fit$W
+x <- X[,4]
+w <- W[,2]
+
+cosine(x,w)
+
+test <- signature.match(X,W)
+
+test
 
