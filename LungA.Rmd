@@ -58,7 +58,7 @@ V = as.matrix(LACA[, order(colSums(LACA))])
 
 ## Model selection
 
-```{r, warning = F, fig.width = 5, fig.height = 3, fig.align = "center"}
+```{r, warning = F, fig.width = 4, fig.height = 3, fig.align = "center"}
 
 testk <- k.choice(trials = 5:15, seed = 1, V = V)
 
@@ -66,14 +66,21 @@ testk <- k.choice(trials = 5:15, seed = 1, V = V)
 
 df <- data.frame(k = as.integer(names(testk$bicall)), bic = as.numeric(testk$bicall))
 
-ggplot(df, aes(x = k, y = bic)) +
-  geom_line(linewidth = 0.8, colour = "dodgerblue4") +
-  geom_point(size = 1.5) + geom_point(data = df[df$k == testk$k, ], size = 4, shape = 1, colour = "black") +
+g0 <- ggplot(df, aes(x = k, y = bic)) +
+  geom_line(linewidth = 0.5, colour = "dodgerblue4") +
+  geom_point(size = 1.5) +
+  geom_point(data = df[df$k == testk$k, ], size = 4, shape = 1, colour = "black") +
   scale_x_continuous(breaks = df$k) +
-  labs(x = "Number of signatures", y = "Bayesian Information Criterion (BIC)")+
-  theme_bw() +
+  labs(
+    x = expression("Number of signatures," ~ italic(k)),
+    y = "Bayesian Information Criterion (BIC)"
+  ) +
+  theme_bw(base_size = 10) +
   theme(panel.grid.minor = element_blank())
 
+g0
+
+# The model with the smallest BIC is indicated. 
 ```
 
 ## Fit
@@ -228,7 +235,7 @@ g2
 
 ```{r}
 
-lambda_tilde <- tuning_lambda(V, k, seed = 1:2)
+lambda_tilde <- tuning_lambda(V, k, seed = 1:2, delta = 0.1)
 
 # lambda_tilde$table
 
@@ -239,7 +246,7 @@ lambda_tilde <- tuning_lambda(V, k, seed = 1:2)
 
 ```{r}
 
-fit_min <- MINVOLNMF(V, k = k, seed = 1:10, tol = 1e-8, maxiter = 1000,  lambda_tilde = 0.005)
+fit_min <- MINVOLNMF(V, k = k, seed = 1:10, tol = 1e-8, maxiter = 1000,  lambda_tilde = 0.005, delta = 0.1)
 
 ```
 
