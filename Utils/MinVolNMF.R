@@ -1,5 +1,5 @@
 # Min-Vol KL-NMF algorithm as described in Section 3.3 and Section 3.4
-MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000, lambda_tilde = 0.01){
+MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000, lambda_tilde = 0.01, delta = 1){
   m <- dim(V)[1]
   n <- dim(V)[2]
   eps <- 1e-10   # to avoid underflow
@@ -21,7 +21,7 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
     
     WH0 <- W %*% H
     WH0[WH0 <= 0] <- eps
-    lambda <- lambda_tilde * gkl.dev(as.vector(V), as.vector(WH0)) / max(abs(logdet(t(W) %*% W + diag(nrow = k))), eps)
+    lambda <- lambda_tilde * gkl.dev(as.vector(V), as.vector(WH0)) / max(abs(logdet(t(W) %*% W + delta * diag(nrow = k))), eps)
     lambdas[i] <- lambda
     
     nm <- normalize(W, H)
@@ -58,7 +58,7 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
       Hnom <- nm$H
       
       # Line-search
-      while (gkl.dev.reg(V, Wnom, Hnom, lambda, k) > gkl.dev.reg(V, W, H, lambda, k) &&
+      while (gkl.dev.reg(V, Wnom, Hnom, lambda, k, delta) > gkl.dev.reg(V, W, H, lambda, k, delta) &&
              gamma > eps) {
         gamma <- gamma * 0.8
         Wmix <- (1 - gamma) * W + gamma * Wup
@@ -72,7 +72,7 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
       gamma <- min(1, gamma * 1.2)
       
       # Stopping Criterion
-      obj[t] <- gkl.dev.reg(V, W, H, lambda, k)
+      obj[t] <- gkl.dev.reg(V, W, H, lambda, k, delta)
       if(t > 1 && abs(obj[t-1] - obj[t]) / (abs(obj[t-1]) + eps) < tol){
         niter <- t; 
         break}
@@ -85,7 +85,7 @@ MINVOLNMF = function(V, k, seed = 42, arrange = TRUE, tol = 1e-5, maxiter = 1000
     Wlist[[i]] <- W
     Hlist[[i]] <- H
     div[i] <- gkl.dev(as.vector(V), as.vector(W %*% H))
-    objval[i] <- gkl.dev.reg(V, W, H, lambda, k)
+    objval[i] <- gkl.dev.reg(V, W, H, lambda, k, delta)
     reslist[[i]] <- list(iter = niter, objfn = obj[1:niter])
   }
   

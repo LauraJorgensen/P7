@@ -1,11 +1,11 @@
 # Function for tuning lambda tilde
-tuning_lambda = function(V, k, seed = 42, grid = c(0.0000001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2), rel_tol = 0.05, tol = 1e-5, maxiter = 1000){
+tuning_lambda = function(V, k, seed = 42, grid = c(0.0000001, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2), rel_tol = 0.05, tol = 1e-5, maxiter = 1000, delta = 1){
   grid <- sort(grid)
   gkl <- rep(0, length(grid))
   fit <- vector("list", length(grid))
   
   for(j in seq_along(grid)){
-    fit[[j]] <- MINVOLNMF(V, k, seed = seed, tol = tol, maxiter = maxiter, lambda_tilde = grid[j])
+    fit[[j]] <- MINVOLNMF(V, k, seed = seed, tol = tol, maxiter = maxiter, lambda_tilde = grid[j], delta = delta)
     gkl[j] <- fit[[j]]$gkl
   }
   
