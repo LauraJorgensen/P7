@@ -1,6 +1,5 @@
 ---
-title: "P7: Uniqueness and Identifiability in Mutational Signature Extraction"
-subtitle: "A Comparison of KL-NMF and Min-Vol KL-NMF"
+title: "Extraction of Mutational Signatures in the Lung A Dataset and Comparison with COSMIC"
 author: "Group MS7-01"
 date: "23/11/2026"
 output:
@@ -17,6 +16,8 @@ output:
 library(tidyverse)
 library(Matrix)
 library(ggplot2)
+library(ggnewscale)
+library(lsa)
 
 fn_files <- list.files(path = file.path("Utils"), full.names = TRUE)
 invisible(lapply(fn_files, source))
@@ -28,10 +29,13 @@ Rcpp::sourceCpp("SFS-master/src/sampleSFS.cpp")
 ```{r, include = F}
 
 sub_cols <- c("C > A" = "#4FA9DF", "C > G" = "#231F20", "C > T" = "#E43B34",
-              "T > A" = "#E0E0E0", "T > C" = "#8CC63F", "T > G" = "#EFA9CB")
+              "T > A" = "gray70", "T > C" = "#8CC63F", "T > G" = "#EFA9CB")
 
 bg_cols <- c("C > A" = "#D3E9F7", "C > G" = "#D9D9D9", "C > T" = "#F2C6C6",
              "T > A" = "#F7F7F7", "T > C" = "#E3EFD0", "T > G" = "#FAEBF3")
+
+bg_cols_gray <- c("C > A" = "#F7F7F7", "C > G" = "#F7F7F7", "C > T" = "#F7F7F7",
+             "T > A" = "#F7F7F7", "T > C" = "#F7F7F7", "T > G" = "#F7F7F7")
 
 equal_breaks <- function(n = 3, s = 0.05, ...){
   function(x){
@@ -42,68 +46,157 @@ equal_breaks <- function(n = 3, s = 0.05, ...){
 
 ```
 
+# Parameters
+
+```{r}
+
+seed <- 1:5
+tol <- 1e-8
+maxiter <- 1000
+k <- 9
+lambda_tilde <- 0.005
+delta <- 1
+
+params <- data.frame(
+  seed = paste(seed, collapse = ", "),
+  tol = format(tol, scientific = TRUE),
+  maxiter = maxiter,
+  k = k,
+  lambda_tilde = lambda_tilde,
+  delta = delta
+)
+
+knitr::kable(params, row.names = FALSE)
+
+```
+
+
 # Lung A. data
 
 ```{r}
 
-obj_name <- load("LACA24.Rdata")
+obj_name <- load("Data/LACA24.Rdata")
 
-LACA <- as_tibble(get("V"))
+V_raw <- get("V")
 
-V = as.matrix(LACA[, order(colSums(LACA))])
-
-```
-
-# Cosmic data
-
-```{r}
-
-COSMIC <- read_tsv("COSMIC_v3.2_SBS_GRCh37.tsv")
-
-COSMIC_matrix <- COSMIC %>%
-  column_to_rownames(var = colnames(COSMIC)[1])
-
-X <- as.matrix(COSMIC_matrix)
+V <- as.matrix(V_raw[, order(colSums(V_raw)), drop = F])
 
 ```
 
 
 # KL-NMF
 
-## Model selection
+## Model selection ($k$)
 
 ```{r, warning = F, fig.width = 4, fig.height = 3, fig.align = "center"}
 
-testk <- k.choice(trials = 5:15, seed = 1, V = V)
-
-# testk$bicall
-
-df <- data.frame(k = as.integer(names(testk$bicall)), bic = as.numeric(testk$bicall))
-
-g0 <- ggplot(df, aes(x = k, y = bic)) +
-  geom_line(linewidth = 0.5, colour = "dodgerblue4") +
-  geom_point(size = 1.5) +
-  geom_point(data = df[df$k == testk$k, ], size = 4, shape = 1, colour = "black") +
-  scale_x_continuous(breaks = df$k) +
-  labs(
-    x = expression("Number of signatures," ~ italic(k)),
-    y = "Bayesian Information Criterion (BIC)"
-  ) +
-  theme_bw(base_size = 10) +
-  theme(panel.grid.minor = element_blank())
-
-g0
-
-# The model with the smallest BIC is indicated. 
+# testk <- k.choice(trials = 5:15, seed = 1, V = V)
+# 
+# # testk$bicall
+# 
+# df <- data.frame(k = as.integer(names(testk$bicall)), bic = as.numeric(testk$bicall))
+# 
+# g0 <- ggplot(df, aes(x = k, y = bic)) +
+#   geom_line(linewidth = 0.5, colour = "dodgerblue4") +
+#   geom_point(size = 1.5) +
+#   geom_point(data = df[df$k == testk$k, ], size = 4, shape = 1, colour = "black") +
+#   scale_x_continuous(breaks = df$k) +
+#   labs(
+#     x = expression("Number of signatures," ~ italic(k)),
+#     y = "Bayesian Information Criterion (BIC)"
+#   ) +
+#   theme_bw(base_size = 10) +
+#   theme(panel.grid.minor = element_blank())
+# 
+# g0
+# 
+# # The model with the smallest BIC is indicated.
 ```
 
 ## Fit
 
 ```{r}
 
-k = 9
+fit <- KLNMF(V, k = k, seed = seed, tol = tol, maxiter = maxiter)
 
-fit <- KLNMF(V, k = k, seed = 1:10, tol = 1e-8, maxiter = 1000)
+```
+
+```{r, warning = F, fig.width = 7, fig.height = 6, fig.align = "center"}
+
+P <- fit$W
+k <- ncol(P)
+
+mut <- c("C > A","C > G","C > T","T > A","T > C","T > G")
+sub = rep(mut, each = 16)
+
+dat1 = data.frame(m = factor(rownames(V), levels = unique(rownames(V))), sub = sub, S = P)
+data2 = reshape(dat1, varying = colnames(dat1)[-c(1,2)], direction = "long", v.names = "max")
+data2$time <- factor(data2$time)
+
+data2$sub  <- factor(data2$sub, levels = names(sub_cols))
+sig_levels <- levels(data2$time)
+
+ylim_df <- data2 %>%
+  group_by(time) %>%
+  summarise(ymax = max(max, na.rm = TRUE), .groups = "drop") %>%
+  mutate(ytop  = ymax * 1.05,
+         label = paste("Signature", time))
+
+grid_df <- ylim_df %>%
+  rowwise() %>%
+  mutate(yb = list({
+    rng <- c(-0.05 * ymax, 1.05 * ymax)
+    equal_breaks(n = 3, s = 0.2)(rng)
+  })) %>%
+  tidyr::unnest(yb) %>%
+  ungroup()
+
+panel_df <- expand.grid(sub  = factor(names(sub_cols), levels = names(sub_cols)),
+                        time = factor(sig_levels, levels = sig_levels))
+
+label_df <- ylim_df %>%
+  mutate(sub = factor("T > G", levels = names(sub_cols)),
+         m   = levels(data2$m)[length(levels(data2$m))])
+
+
+
+
+g1 <- ggplot(data2, aes(x = m, y = max)) +
+  geom_rect(data = panel_df, inherit.aes = FALSE,
+            aes(fill = sub),
+            xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
+  scale_fill_manual(values = bg_cols_gray) +
+  geom_hline(data = grid_df, aes(yintercept = yb),
+             colour = "grey75", linewidth = 0.2) +
+  new_scale_fill() +                                   # <- ny fill-skala til søjlerne
+  geom_bar(aes(fill = sub), stat = "identity", width = 0.5) +   # <- fill efter mutationstype
+  scale_fill_manual(values = sub_cols) +               # <- søjlefarverne
+  geom_text(data = label_df, inherit.aes = FALSE,
+            aes(x = m, y = ytop, label = label),
+            hjust = 1, vjust = 1.4, fontface = "bold", size = 3.2) +
+  facet_grid(rows = vars(time), cols = vars(sub),
+             scales = "free", switch = "x") +
+  theme_bw() +
+  theme(text = element_text(size = 10),
+        axis.text.x = element_blank(),
+        axis.text.y = element_text(size = 8),
+        axis.ticks = element_blank(),
+        legend.position = "none",
+        panel.grid = element_blank(),
+        panel.border = element_rect(colour = "grey75", fill = NA, linewidth = 0.2),
+        panel.spacing.x = unit(0, "line"),
+        panel.spacing.y = unit(0.4, "line"),
+        strip.background = element_blank(),
+        strip.text.y = element_blank(),
+        strip.placement = "outside",
+        strip.text.x = element_text(size = 10, face = "bold")) +
+  ylab("Probability") + xlab("Mutation types") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+                     breaks = equal_breaks(n = 3, s = 0.2),
+                     expand = c(0.05, 0))
+g1
+
+ggsave("Output/NMF_signatures_Lung_A.pdf", plot = g1, width = 7, height = 6)
 
 ```
 
@@ -120,10 +213,10 @@ sig = rep(c(1:k), dev1$totalIter)
 mut <- c("C > A","C > G","C > T","T > A","T > C","T > G")
 sub = rep(mut, each = 16)
 
-dat1 = data.frame(m = factor(rownames(LACA), levels = unique(rownames(LACA))), sub = sub, S = t(prob.min))
+dat1 = data.frame(m = factor(rownames(V), levels = unique(rownames(V))), sub = sub, S = t(prob.min))
 datmin = reshape(dat1, varying = colnames(dat1)[-c(1,2)], direction = "long", v.names = "min")
 
-dat1 = data.frame(m = factor(rownames(LACA), levels = unique(rownames(LACA))), S = t(prob.max))
+dat1 = data.frame(m = factor(rownames(V), levels = unique(rownames(V))), S = t(prob.max))
 datmax = reshape(dat1, varying = colnames(dat1)[-1], direction = "long", v.names = "max")
 
 data2 = merge(datmin, datmax, by = c("m", "time", "id"))
@@ -135,10 +228,10 @@ sig_levels <- levels(data2$time)
 
 ```
 
-### Mutational signatures
-
 
 ```{r, warning = F, fig.width = 7, fig.height = 6, fig.align = "center"}
+
+### Mutational signatures
 
 ylim_df <- data2 %>%
   group_by(time) %>%
@@ -169,8 +262,8 @@ g1 <- ggplot(data2, aes(x = m, y = min)) +
   scale_fill_manual(values = bg_cols) +
   geom_hline(data = grid_df, aes(yintercept = yb),
              colour = "grey75", linewidth = 0.2) +
-  geom_bar(aes(x = m, y = max), stat = "identity", width = 0.78, fill = "dodgerblue4") +
-  geom_bar(stat = "identity", width = 0.8, fill = "grey70") +
+  geom_bar(aes(x = m, y = max), stat = "identity", width = 0.5, fill = "dodgerblue4") +
+  geom_bar(stat = "identity", width = 0.5, fill = "grey70") +
   geom_text(data = label_df, inherit.aes = FALSE,
             aes(x = m, y = ytop, label = label),
             hjust = 1, vjust = 1.4, fontface = "bold", size = 3.2) +
@@ -196,14 +289,16 @@ g1 <- ggplot(data2, aes(x = m, y = min)) +
                      expand = c(0.05, 0))
 g1
 
-ggsave(filename = "Output/signatures_NMF.pdf", plot = g1, width = 8, height = 6)
+ggsave(filename = "Output/SFS_signatures_Lung_A.pdf", plot = g1, width = 7, height = 6)
 
 ```
 
 
-### Normalized Exposures
 
-```{r, fig.width = 7, fig.height = 3, fig.align = "center"}
+
+```{r, fig.width = 7, fig.height = 3.3, fig.align = "center"}
+
+### Normalized Exposures
 
 ## equivalent to signature plot
 prob.min = dev1$Eminimum%*%diag(1/colSums(dev1$E_lastCheckResults[1:k,]))
@@ -219,8 +314,8 @@ dat2$time = factor(dat2$time)
 g2 = ggplot(dat2, aes(x = m, y = min)) +
   geom_hline(yintercept = c(0, 0.5),
              colour = "grey75", linewidth = 0.2) +
-  geom_bar(aes(x = m, y = max), stat = "identity", width = 0.78, fill = "dodgerblue4") +
-  geom_bar(stat = "identity", width = 0.8, fill = "grey70") +
+  geom_bar(aes(x = m, y = max), stat = "identity", width = 0.4, fill = "dodgerblue4") +
+  geom_bar(stat = "identity", width = 0.4, fill = "grey70") +
   facet_grid(cols = vars(time),
              labeller = labeller(time = function(x) paste("Signature", x))) +
   theme_bw() +
@@ -230,9 +325,10 @@ g2 = ggplot(dat2, aes(x = m, y = min)) +
         axis.ticks.y = element_blank(),
         legend.position = "none",
         panel.grid = element_blank(),
+        panel.background = element_rect(fill = "#F7F7F7", colour = NA),
         panel.border = element_rect(colour = "grey75", fill = NA, linewidth = 0.2),
         strip.background = element_blank(),
-        strip.text.x = element_text(size = 9, face = "bold")) +
+        strip.text.x = element_text(size = 8, face = "bold")) +
   ylab("Probability") + xlab("Patients") +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1),
                      breaks = c(0, 0.5)) +
@@ -240,32 +336,31 @@ g2 = ggplot(dat2, aes(x = m, y = min)) +
 
 g2
 
+ggsave(filename = "Output/SFS_exposures_Lung_A.pdf", plot = g2, width = 7, height = 3.3)
+
 ```
 
 
 # Min-Vol KL-NMF
 
-## Regularization parameter $\lambda$
+## Regularization parameter ($\lambda$)
 
 ```{r}
 
-lambda_tilde <- tuning_lambda(V, k, seed = 1:2, delta = 0.1)
-
+# lambda_tilde <- tuning_lambda(V, k, grid = c(0.0000001, 0.001, 0.005, 0.006, 0.007, 0.008, 0.009, 0.01), seed = 1:2, delta = 0.1)
+# 
 # lambda_tilde$table
 
 ```
-
 
 ## Fit
 
 ```{r}
 
-fit_min <- MINVOLNMF(V, k = k, seed = 1:10, tol = 1e-8, maxiter = 1000,  lambda_tilde = 0.005, delta = 0.1)
+fit_min <- MINVOLNMF(V, k = k, seed = seed, tol = tol, maxiter = maxiter, lambda_tilde = lambda_tilde, delta = delta)
 
 ```
 
-
-### Mutational signatures
 
 ```{r, warning = F, fig.width = 7, fig.height = 6, fig.align = "center"}
 
@@ -275,7 +370,7 @@ k <- ncol(P)
 mut <- c("C > A","C > G","C > T","T > A","T > C","T > G")
 sub = rep(mut, each = 16)
 
-dat1 = data.frame(m = factor(rownames(LACA), levels = unique(rownames(LACA))), sub = sub, S = P)
+dat1 = data.frame(m = factor(rownames(V), levels = unique(rownames(V))), sub = sub, S = P)
 data2 = reshape(dat1, varying = colnames(dat1)[-c(1,2)], direction = "long", v.names = "max")
 data2$time <- factor(data2$time)
 
@@ -304,14 +399,19 @@ label_df <- ylim_df %>%
   mutate(sub = factor("T > G", levels = names(sub_cols)),
          m   = levels(data2$m)[length(levels(data2$m))])
 
+
+
+
 g1 <- ggplot(data2, aes(x = m, y = max)) +
   geom_rect(data = panel_df, inherit.aes = FALSE,
             aes(fill = sub),
             xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
-  scale_fill_manual(values = bg_cols) +
+  scale_fill_manual(values = bg_cols_gray) +
   geom_hline(data = grid_df, aes(yintercept = yb),
              colour = "grey75", linewidth = 0.2) +
-  geom_bar(stat = "identity", width = 0.8, fill = "dodgerblue4") +
+  new_scale_fill() +                                   # <- ny fill-skala til søjlerne
+  geom_bar(aes(fill = sub), stat = "identity", width = 0.5) +   # <- fill efter mutationstype
+  scale_fill_manual(values = sub_cols) +               # <- søjlefarverne
   geom_text(data = label_df, inherit.aes = FALSE,
             aes(x = m, y = ytop, label = label),
             hjust = 1, vjust = 1.4, fontface = "bold", size = 3.2) +
@@ -337,57 +437,82 @@ g1 <- ggplot(data2, aes(x = m, y = max)) +
                      expand = c(0.05, 0))
 g1
 
-```
-
-
-```{r}
-
-# tuned <- tuning_lambda(V, k = 3, seed = 1:2)
-# tuned$lambda_tilde
-# tuned$table
+ggsave(filename = "Output/MinVolKLNMF_signatures_Lung_A.pdf", plot = g1, width = 7, height = 6)
 
 ```
-
-
-### Normalized Exposures
 
 ```{r, fig.width = 7, fig.height = 3, fig.align = "center"}
-
-## NMF-løsning (ingen SFS)
-E <- fit_min$H[1:k, ]
-E <- sweep(E, 2, colSums(E), "/")   # hvis fit$H allerede er normaliseret, gør den ingenting
-
-dat1 = data.frame(m = factor(colSums(V), levels = unique(colSums(V))), S = t(E))
-dat2 = reshape(dat1, varying = colnames(dat1)[-1], direction = "long", v.names = "max")
-dat2$time = factor(dat2$time)
-
-g2 = ggplot(dat2, aes(x = m, y = max)) +
-  geom_hline(yintercept = c(0, 0.5),
-             colour = "grey75", linewidth = 0.2) +
-  geom_bar(stat = "identity", width = 0.8, fill = "dodgerblue4") +
-  facet_grid(cols = vars(time),
-             labeller = labeller(time = function(x) paste("Signature", x))) +
-  theme_bw() +
-  theme(text = element_text(size = 10),
-        axis.text.x = element_text(angle = 0, size = 8, hjust = 0.5),
-        axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        legend.position = "none",
-        panel.grid = element_blank(),
-        panel.border = element_rect(colour = "grey75", fill = NA, linewidth = 0.2),
-        strip.background = element_blank(),
-        strip.text.x = element_text(size = 9, face = "bold")) +
-  ylab("Probability") + xlab("Patients") +
-  scale_y_continuous(labels = scales::percent_format(accuracy = 1),
-                     breaks = c(0, 0.5)) +
-  coord_flip()
-
-g2
+# exposiures
+# ## NMF-løsning (ingen SFS)
+# E <- fit_min$H[1:k, ]
+# E <- sweep(E, 2, colSums(E), "/")   # hvis fit$H allerede er normaliseret, gør den ingenting
+# 
+# dat1 = data.frame(m = factor(colSums(V), levels = unique(colSums(V))), S = t(E))
+# dat2 = reshape(dat1, varying = colnames(dat1)[-1], direction = "long", v.names = "max")
+# dat2$time = factor(dat2$time)
+# 
+# g2 = ggplot(dat2, aes(x = m, y = max)) +
+#   geom_hline(yintercept = c(0, 0.5),
+#              colour = "grey75", linewidth = 0.2) +
+#   geom_bar(stat = "identity", width = 0.8, fill = "dodgerblue4") +
+#   facet_grid(cols = vars(time),
+#              labeller = labeller(time = function(x) paste("Signature", x))) +
+#   theme_bw() +
+#   theme(text = element_text(size = 10),
+#         axis.text.x = element_text(angle = 0, size = 8, hjust = 0.5),
+#         axis.text.y = element_blank(),
+#         axis.ticks.y = element_blank(),
+#         legend.position = "none",
+#         panel.grid = element_blank(),
+#         panel.border = element_rect(colour = "grey75", fill = NA, linewidth = 0.2),
+#         strip.background = element_blank(),
+#         strip.text.x = element_text(size = 9, face = "bold")) +
+#   ylab("Probability") + xlab("Patients") +
+#   scale_y_continuous(labels = scales::percent_format(accuracy = 1),
+#                      breaks = c(0, 0.5)) +
+#   coord_flip()
+# 
+# g2
 
 ```
-```{r}
+
+
+# COSMIC data
+
+```{r, warning = F, message = F}
+
+COSMIC <- read_tsv("Data/COSMIC_v3.2_SBS_GRCh37.tsv")
+
+COSMIC_matrix <- COSMIC %>%
+  column_to_rownames(var = colnames(COSMIC)[1])
+
+X <- as.matrix(COSMIC_matrix)
+
+rn <- rownames(X)
+
+# Udtræk substitutionen (fx "C>A") og 5'/3'-baserne
+sub_type <- gsub(".*\\[(.*)\\].*", "\\1", rn)
+left_base  <- substr(rn, 1, 1)
+right_base <- substr(rn, nchar(rn), nchar(rn))
+
+# Ønsket rækkefølge af substitutioner og baser
+sub_order  <- c("C>A", "C>G", "C>T", "T>A", "T>C", "T>G")
+base_order <- c("A", "C", "G", "T")
+
+ord <- order(
+  match(sub_type, sub_order),
+  match(left_base, base_order),
+  match(right_base, base_order)
+)
+
+X_sorted <- X[ord, , drop = FALSE]
+
+```
+
+```{r, warning = F, fig.width = 7, fig.height = 7, fig.align = "center"}
+
 # 1. Vælg de COSMIC-signaturer du vil plotte
-valgte_sigs <- c("SBS3", "SBS40", "SBS39", "SBS4") # Ret til dine ønskede signaturer
+valgte_sigs <- c("SBS4", "SBS18", "SBS5", "SBS2", "SBS3", "SBS6", "SBS40", "SBS1", "SBS8", "SBS13") # Ret til dine ønskede signaturer
 P_cosmic <- X[, valgte_sigs, drop = FALSE]
 
 # 2. Sikr at rækkefølgen på rækkerne matcher dine mutationstyper (16 af hver i rækkefølge)
@@ -442,15 +567,16 @@ label_df <- ylim_df %>%
     m   = levels(data2$m)[length(levels(data2$m))]
   )
 
-# 5. Plot
 g_cosmic <- ggplot(data2, aes(x = m, y = max)) +
   geom_rect(data = panel_df, inherit.aes = FALSE,
             aes(fill = sub),
             xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf) +
-  scale_fill_manual(values = bg_cols) +
+  scale_fill_manual(values = bg_cols_gray) +
   geom_hline(data = grid_df, aes(yintercept = yb),
              colour = "grey75", linewidth = 0.2) +
-  geom_bar(stat = "identity", width = 0.8, fill = "dodgerblue4") +
+  new_scale_fill() +                                          # <- ny fill-skala til søjlerne
+  geom_bar(aes(fill = sub), stat = "identity", width = 0.5) + # <- fill efter mutationstype
+  scale_fill_manual(values = sub_cols) +                      # <- søjlefarverne
   geom_text(data = label_df, inherit.aes = FALSE,
             aes(x = m, y = ytop, label = label),
             hjust = 1, vjust = 1.4, fontface = "bold", size = 3.2) +
@@ -476,20 +602,62 @@ g_cosmic <- ggplot(data2, aes(x = m, y = max)) +
                      expand = c(0.05, 0))
 
 g_cosmic
+
+ggsave(filename = "Output/COSMIC_signatures.pdf", plot = g_cosmic, width = 7, height = 7)
+
+
+```
+
+## Match with signatures from COSMIC
+
+### KL-NMF
+
+```{r}
+
+W <- fit$W
+
+match_nmf <- signature.match(X_sorted,W)
+
+oversigt <- data.frame(
+  signature = seq_along(match_nmf$best_match),
+  matches  = sapply(match_nmf$above_tol, function(d) {
+    if (is.null(d)) return(NA_character_)
+    d <- d[order(-d$cosine_sim), ]
+    paste0(d$cosmic_name, " (", round(d$cosine_sim, 3), ")", collapse = ", ")
+  })
+)
+
+knitr::kable(oversigt,
+             row.names = FALSE,
+             col.names = c("Signature", "COSMIC matches (cosine similarity)"),
+             align = c("c", "l"))
+
+```
+
+### Min-Vol KL-NMF
+
+```{r}
+
+W <- fit_min$W
+
+match_minnmf <- signature.match(X_sorted,W)
+
+oversigt <- data.frame(
+  signature = seq_along(match_minnmf$best_match),
+  matches  = sapply(match_minnmf$above_tol, function(d) {
+    if (is.null(d)) return(NA_character_)
+    d <- d[order(-d$cosine_sim), ]
+    paste0(d$cosmic_name, " (", round(d$cosine_sim, 3), ")", collapse = ", ")
+  })
+)
+
+knitr::kable(oversigt,
+             row.names = FALSE,
+             col.names = c("Signature", "COSMIC matches (cosine similarity)"),
+             align = c("c", "l"))
+
 ```
 
 
 
-# Match with signatures from COSMIS
-```{r}
-
-W <- fit$W
-x <- X[,4]
-w <- W[,2]
-
-cosine(x,w)
-
-test <- signature.match(X,W)
-
-test
 
